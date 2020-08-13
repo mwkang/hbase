@@ -38,10 +38,12 @@ import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileInfo;
 import org.apache.hadoop.hbase.regionserver.CellSink;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.HStoreFile;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.hadoop.hbase.regionserver.ScanInfo;
 import org.apache.hadoop.hbase.regionserver.ScanType;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
@@ -386,7 +388,6 @@ public abstract class Compactor<T extends CellSink> {
     if (LOG.isDebugEnabled()) {
       lastMillis = currentTime;
     }
-    CloseChecker closeChecker = new CloseChecker(conf, currentTime);
     String compactionName = ThroughputControlUtil.getNameForThrottling(store, "compaction");
     long now = 0;
     boolean hasMore;
@@ -397,17 +398,14 @@ public abstract class Compactor<T extends CellSink> {
     KeyValueScanner kvs = (scanner instanceof KeyValueScanner) ? (KeyValueScanner) scanner : null;
     long shippedCallSizeLimit =
           (long) numofFilesToCompact * this.store.getColumnFamilyDescriptor().getBlocksize();
-    try {
+    try (final CloseChecker closeChecker = new CloseChecker(conf, store)) {
       do {
         hasMore = scanner.next(cells, scannerContext);
         currentTime = EnvironmentEdgeManager.currentTime();
         if (LOG.isDebugEnabled()) {
           now = currentTime;
         }
-        if (closeChecker.isTimeLimit(store, currentTime)) {
-          progress.cancel();
-          return false;
-        }
+        closeChecker.throwExceptionIfClosed();
         // output to writer:
         Cell lastCleanCell = null;
         long lastCleanCellSeqId = 0;
@@ -428,11 +426,8 @@ public abstract class Compactor<T extends CellSink> {
           if (LOG.isDebugEnabled()) {
             bytesWrittenProgressForLog += len;
           }
-          throughputController.control(compactionName, len);
-          if (closeChecker.isSizeLimit(store, len)) {
-            progress.cancel();
-            return false;
-          }
+          throughputController.control(compactionName, len, closeChecker);
+          closeChecker.throwExceptionIfClosed(len);
           if (kvs != null && bytesWrittenProgressForShippedCall > shippedCallSizeLimit) {
             if (lastCleanCell != null) {
               // HBASE-16931, set back sequence id to avoid affecting scan order unexpectedly.
@@ -475,6 +470,10 @@ public abstract class Compactor<T extends CellSink> {
       progress.cancel();
       throw new InterruptedIOException(
             "Interrupted while control throughput of compacting " + compactionName);
+    } catch (RegionStoppedException e) {
+      LOG.warn("{}", e.getMessage());
+      progress.cancel();
+      return false;
     } finally {
       // Clone last cell in the final because writer will append last cell when committing. If
       // don't clone here and once the scanner get closed, then the memory of last cell will be

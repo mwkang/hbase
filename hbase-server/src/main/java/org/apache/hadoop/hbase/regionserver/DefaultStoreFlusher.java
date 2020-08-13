@@ -46,7 +46,7 @@ public class DefaultStoreFlusher extends StoreFlusher {
   @Override
   public List<Path> flushSnapshot(MemStoreSnapshot snapshot, long cacheFlushId,
       MonitoredTask status, ThroughputController throughputController,
-      FlushLifeCycleTracker tracker) throws IOException {
+      FlushLifeCycleTracker tracker) throws IOException, RegionStoppedException {
     ArrayList<Path> result = new ArrayList<>();
     int cellsCount = snapshot.getCellsCount();
     if (cellsCount == 0) return result; // don't flush if there are no entries

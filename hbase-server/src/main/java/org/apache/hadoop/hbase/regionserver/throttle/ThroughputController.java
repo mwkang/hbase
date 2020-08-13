@@ -19,6 +19,8 @@ package org.apache.hadoop.hbase.regionserver.throttle;
 
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.Stoppable;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 
@@ -42,8 +44,10 @@ public interface ThroughputController extends Stoppable {
   /**
    * Control the throughput. Will sleep if too fast.
    * @return the actual sleep time.
+   * @throws RegionStoppedException When the system is stopped.
    */
-  long control(String name, long size) throws InterruptedException;
+  long control(String name, long size, CloseChecker closeChecker) throws InterruptedException,
+    RegionStoppedException;
 
   /**
    * Finish the controller. Should call this method in a finally block.

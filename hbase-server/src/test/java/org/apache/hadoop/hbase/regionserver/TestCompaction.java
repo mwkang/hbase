@@ -21,8 +21,8 @@ import static org.apache.hadoop.hbase.HBaseTestingUtility.START_KEY;
 import static org.apache.hadoop.hbase.HBaseTestingUtility.START_KEY_BYTES;
 import static org.apache.hadoop.hbase.HBaseTestingUtility.fam1;
 import static org.apache.hadoop.hbase.regionserver.Store.PRIORITY_USER;
-import static org.apache.hadoop.hbase.regionserver.compactions.CloseChecker.SIZE_LIMIT_KEY;
-import static org.apache.hadoop.hbase.regionserver.compactions.CloseChecker.TIME_LIMIT_KEY;
+import static org.apache.hadoop.hbase.regionserver.CloseChecker.SIZE_LIMIT_KEY;
+import static org.apache.hadoop.hbase.regionserver.CloseChecker.TIME_LIMIT_KEY;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -883,7 +883,7 @@ public class TestCompaction {
     }
 
     @Override
-    public long control(String compactionName, long size) throws InterruptedException {
+    public long control(String compactionName, long size, CloseChecker closeChecker) throws InterruptedException, RegionStoppedException {
       Thread.sleep(6000000);
       return 6000000;
     }

@@ -1042,7 +1042,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
    */
   protected List<Path> flushCache(final long logCacheFlushId, MemStoreSnapshot snapshot,
       MonitoredTask status, ThroughputController throughputController,
-      FlushLifeCycleTracker tracker) throws IOException {
+      FlushLifeCycleTracker tracker) throws IOException, RegionStoppedException {
     // If an exception happens flushing, we let it out without clearing
     // the memstore snapshot.  The old snapshot will be returned when we say
     // 'snapshot', the next time flush comes around.
@@ -2438,7 +2438,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
     }
 
     @Override
-    public void flushCache(MonitoredTask status) throws IOException {
+    public void flushCache(MonitoredTask status) throws IOException, RegionStoppedException {
       RegionServerServices rsService = region.getRegionServerServices();
       ThroughputController throughputController =
           rsService == null ? null : rsService.getFlushThroughputController();

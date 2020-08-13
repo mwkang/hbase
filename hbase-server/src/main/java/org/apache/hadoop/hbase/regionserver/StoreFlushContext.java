@@ -47,7 +47,7 @@ interface StoreFlushContext {
    *
    * @throws IOException in case the flush fails
    */
-  void flushCache(MonitoredTask status) throws IOException;
+  void flushCache(MonitoredTask status) throws IOException, RegionStoppedException;
 
   /**
    * Commit the flush - add the store file to the store and clear the

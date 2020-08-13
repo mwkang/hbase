@@ -56,7 +56,7 @@ public class StripeStoreFlusher extends StoreFlusher {
   @Override
   public List<Path> flushSnapshot(MemStoreSnapshot snapshot, long cacheFlushSeqNum,
       MonitoredTask status, ThroughputController throughputController,
-      FlushLifeCycleTracker tracker) throws IOException {
+      FlushLifeCycleTracker tracker) throws RegionStoppedException, IOException {
     List<Path> result = new ArrayList<>();
     int cellsCount = snapshot.getCellsCount();
     if (cellsCount == 0) return result; // don't flush if there are no entries

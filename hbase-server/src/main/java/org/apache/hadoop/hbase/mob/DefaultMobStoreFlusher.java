@@ -33,12 +33,14 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
 import org.apache.hadoop.hbase.regionserver.DefaultStoreFlusher;
 import org.apache.hadoop.hbase.regionserver.FlushLifeCycleTracker;
 import org.apache.hadoop.hbase.regionserver.HMobStore;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.MemStoreSnapshot;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
 import org.apache.hadoop.hbase.regionserver.StoreFileWriter;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputControlUtil;
@@ -113,7 +115,7 @@ public class DefaultMobStoreFlusher extends DefaultStoreFlusher {
   @Override
   public List<Path> flushSnapshot(MemStoreSnapshot snapshot, long cacheFlushId,
       MonitoredTask status, ThroughputController throughputController,
-      FlushLifeCycleTracker tracker) throws IOException {
+      FlushLifeCycleTracker tracker) throws IOException, RegionStoppedException {
     ArrayList<Path> result = new ArrayList<>();
     long cellsCount = snapshot.getCellsCount();
     if (cellsCount == 0) return result; // don't flush if there are no entries
@@ -178,7 +180,7 @@ public class DefaultMobStoreFlusher extends DefaultStoreFlusher {
    */
   protected void performMobFlush(MemStoreSnapshot snapshot, long cacheFlushId,
       InternalScanner scanner, StoreFileWriter writer, MonitoredTask status,
-      ThroughputController throughputController) throws IOException {
+      ThroughputController throughputController) throws IOException, RegionStoppedException {
     StoreFileWriter mobFileWriter = null;
     int compactionKVMax = conf.getInt(HConstants.COMPACTION_KV_MAX,
         HConstants.COMPACTION_KV_MAX_DEFAULT);
@@ -202,7 +204,7 @@ public class DefaultMobStoreFlusher extends DefaultStoreFlusher {
     IOException ioe = null;
     // Clear all past MOB references
     mobRefSet.get().clear();
-    try {
+    try (final CloseChecker closeChecker = new CloseChecker(conf, store)) {
       do {
         hasMore = scanner.next(cells, scannerContext);
         if (!cells.isEmpty()) {
@@ -225,7 +227,9 @@ public class DefaultMobStoreFlusher extends DefaultStoreFlusher {
               writer.append(reference);
             }
             if (control) {
-              throughputController.control(flushName, c.getSerializedSize());
+              throughputController.control(flushName, c.getSerializedSize(), closeChecker);
+            } else {
+              closeChecker.throwExceptionIfClosed();
             }
           }
           cells.clear();

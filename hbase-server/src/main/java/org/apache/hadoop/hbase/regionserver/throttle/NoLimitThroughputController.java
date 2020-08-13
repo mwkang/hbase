@@ -18,6 +18,8 @@
 package org.apache.hadoop.hbase.regionserver.throttle;
 
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 
@@ -35,7 +37,9 @@ public class NoLimitThroughputController implements ThroughputController {
   }
 
   @Override
-  public long control(String compactionName, long size) throws InterruptedException {
+  public long control(String compactionName, long size, CloseChecker closeChecker)
+    throws InterruptedException, RegionStoppedException {
+    closeChecker.throwExceptionIfClosed();
     return 0;
   }
 

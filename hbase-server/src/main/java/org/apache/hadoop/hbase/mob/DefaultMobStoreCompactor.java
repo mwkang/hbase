@@ -44,6 +44,7 @@ import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.HStoreFile;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.hadoop.hbase.regionserver.ScanInfo;
 import org.apache.hadoop.hbase.regionserver.ScanType;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
@@ -51,7 +52,7 @@ import org.apache.hadoop.hbase.regionserver.ShipperListener;
 import org.apache.hadoop.hbase.regionserver.StoreFileScanner;
 import org.apache.hadoop.hbase.regionserver.StoreFileWriter;
 import org.apache.hadoop.hbase.regionserver.StoreScanner;
-import org.apache.hadoop.hbase.regionserver.compactions.CloseChecker;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionRequestImpl;
 import org.apache.hadoop.hbase.regionserver.compactions.DefaultCompactor;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputControlUtil;
@@ -326,7 +327,6 @@ public class DefaultMobStoreCompactor extends DefaultCompactor {
     if (LOG.isDebugEnabled()) {
       lastMillis = currentTime;
     }
-    CloseChecker closeChecker = new CloseChecker(conf, currentTime);
     String compactionName = ThroughputControlUtil.getNameForThrottling(store, "compaction");
     long now = 0;
     boolean hasMore;
@@ -348,7 +348,7 @@ public class DefaultMobStoreCompactor extends DefaultCompactor {
         (long) numofFilesToCompact * this.store.getColumnFamilyDescriptor().getBlocksize();
 
     Cell mobCell = null;
-    try {
+    try (final CloseChecker closeChecker = new CloseChecker(conf, store)) {
 
       mobFileWriter = newMobWriter(fd);
       fileName = Bytes.toBytes(mobFileWriter.getPath().getName());
@@ -359,10 +359,7 @@ public class DefaultMobStoreCompactor extends DefaultCompactor {
         if (LOG.isDebugEnabled()) {
           now = currentTime;
         }
-        if (closeChecker.isTimeLimit(store, currentTime)) {
-          progress.cancel();
-          return false;
-        }
+        closeChecker.throwExceptionIfClosed();
         for (Cell c : cells) {
           if (compactMOBs) {
             if (MobUtils.isMobReferenceCell(c)) {
@@ -538,11 +535,8 @@ public class DefaultMobStoreCompactor extends DefaultCompactor {
           if (LOG.isDebugEnabled()) {
             bytesWrittenProgressForLog += len;
           }
-          throughputController.control(compactionName, len);
-          if (closeChecker.isSizeLimit(store, len)) {
-            progress.cancel();
-            return false;
-          }
+          throughputController.control(compactionName, len, closeChecker);
+          closeChecker.throwExceptionIfClosed(len);
           if (kvs != null && bytesWrittenProgressForShippedCall > shippedCallSizeLimit) {
             ((ShipperListener) writer).beforeShipped();
             kvs.shipped();
@@ -568,6 +562,10 @@ public class DefaultMobStoreCompactor extends DefaultCompactor {
       progress.cancel();
       throw new InterruptedIOException(
           "Interrupted while control throughput of compacting " + compactionName);
+    } catch (RegionStoppedException e) {
+      LOG.warn("{}", e.getMessage());
+      progress.cancel();
+      return false;
     } catch (IOException t) {
       String msg = "Mob compaction failed for region: " +
         store.getRegionInfo().getEncodedName();

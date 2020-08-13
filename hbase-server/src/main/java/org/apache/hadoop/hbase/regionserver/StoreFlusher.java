@@ -38,8 +38,8 @@ import org.apache.yetus.audience.InterfaceAudience;
  */
 @InterfaceAudience.Private
 abstract class StoreFlusher {
-  protected Configuration conf;
-  protected HStore store;
+  protected final Configuration conf;
+  protected final HStore store;
 
   public StoreFlusher(Configuration conf, HStore store) {
     this.conf = conf;
@@ -56,7 +56,7 @@ abstract class StoreFlusher {
    */
   public abstract List<Path> flushSnapshot(MemStoreSnapshot snapshot, long cacheFlushSeqNum,
       MonitoredTask status, ThroughputController throughputController,
-      FlushLifeCycleTracker tracker) throws IOException;
+      FlushLifeCycleTracker tracker) throws IOException, RegionStoppedException;
 
   protected void finalizeWriter(StoreFileWriter writer, long cacheFlushSeqNum,
       MonitoredTask status) throws IOException {
@@ -105,8 +105,8 @@ abstract class StoreFlusher {
    * @param smallestReadPoint Smallest read point used for the flush.
    * @param throughputController A controller to avoid flush too fast
    */
-  protected void performFlush(InternalScanner scanner, CellSink sink,
-      long smallestReadPoint, ThroughputController throughputController) throws IOException {
+  protected void performFlush(InternalScanner scanner, CellSink sink, long smallestReadPoint,
+    ThroughputController throughputController) throws IOException, RegionStoppedException {
     int compactionKVMax =
         conf.getInt(HConstants.COMPACTION_KV_MAX, HConstants.COMPACTION_KV_MAX_DEFAULT);
 
@@ -122,14 +122,16 @@ abstract class StoreFlusher {
     if (control) {
       throughputController.start(flushName);
     }
-    try {
+    try (final CloseChecker closeChecker = new CloseChecker(conf, store)) {
       do {
         hasMore = scanner.next(kvs, scannerContext);
         if (!kvs.isEmpty()) {
           for (Cell c : kvs) {
             sink.append(c);
             if (control) {
-              throughputController.control(flushName, c.getSerializedSize());
+              throughputController.control(flushName, c.getSerializedSize(), closeChecker);
+            } else {
+              closeChecker.throwExceptionIfClosed();
             }
           }
           kvs.clear();

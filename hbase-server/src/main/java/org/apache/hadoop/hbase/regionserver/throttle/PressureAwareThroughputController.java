@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.Stoppable;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,7 +103,8 @@ public abstract class PressureAwareThroughputController extends Configured imple
   }
 
   @Override
-  public long control(String opName, long size) throws InterruptedException {
+  public long control(String opName, long size, CloseChecker closeChecker)
+    throws InterruptedException, RegionStoppedException {
     ActiveOperation operation = activeOperations.get(opName);
     operation.totalSize += size;
     long deltaSize = operation.totalSize - operation.lastControlSize;
@@ -130,7 +133,7 @@ public abstract class PressureAwareThroughputController extends Configured imple
         operation.lastLogTime = now;
       }
     }
-    Thread.sleep(sleepTime);
+    closeChecker.sleep(sleepTime);
     operation.numberOfSleeps++;
     operation.totalSleepTime += sleepTime;
     operation.lastControlTime = EnvironmentEdgeManager.currentTime();

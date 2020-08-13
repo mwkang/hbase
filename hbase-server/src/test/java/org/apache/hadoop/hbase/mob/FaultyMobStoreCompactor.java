@@ -40,10 +40,11 @@ import org.apache.hadoop.hbase.regionserver.CellSink;
 import org.apache.hadoop.hbase.regionserver.HStore;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
+import org.apache.hadoop.hbase.regionserver.RegionStoppedException;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
 import org.apache.hadoop.hbase.regionserver.ShipperListener;
 import org.apache.hadoop.hbase.regionserver.StoreFileWriter;
-import org.apache.hadoop.hbase.regionserver.compactions.CloseChecker;
+import org.apache.hadoop.hbase.regionserver.CloseChecker;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputControlUtil;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -126,7 +127,6 @@ public class FaultyMobStoreCompactor extends DefaultMobStoreCompactor {
     if (LOG.isDebugEnabled()) {
       lastMillis = currentTime;
     }
-    CloseChecker closeChecker = new CloseChecker(conf, currentTime);
     String compactionName = ThroughputControlUtil.getNameForThrottling(store, "compaction");
     long now = 0;
     boolean hasMore;
@@ -153,7 +153,7 @@ public class FaultyMobStoreCompactor extends DefaultMobStoreCompactor {
       countFailAt = rnd.nextInt(100); // randomly fail fast
     }
 
-    try {
+    try (final CloseChecker closeChecker = new CloseChecker(conf, store)) {
       try {
         mobFileWriter = mobStore.createWriterInTmp(new Date(fd.latestPutTs), fd.maxKeyCount,
           compactionCompression, store.getRegionInfo().getStartKey(), true);
@@ -175,10 +175,7 @@ public class FaultyMobStoreCompactor extends DefaultMobStoreCompactor {
         if (LOG.isDebugEnabled()) {
           now = currentTime;
         }
-        if (closeChecker.isTimeLimit(store, currentTime)) {
-          progress.cancel();
-          return false;
-        }
+        closeChecker.throwExceptionIfClosed();
         for (Cell c : cells) {
           counter++;
           if (compactMOBs) {
@@ -310,11 +307,8 @@ public class FaultyMobStoreCompactor extends DefaultMobStoreCompactor {
           if (LOG.isDebugEnabled()) {
             bytesWrittenProgressForLog += len;
           }
-          throughputController.control(compactionName, len);
-          if (closeChecker.isSizeLimit(store, len)) {
-            progress.cancel();
-            return false;
-          }
+          throughputController.control(compactionName, len, closeChecker);
+          closeChecker.throwExceptionIfClosed(len);
           if (kvs != null && bytesWrittenProgressForShippedCall > shippedCallSizeLimit) {
             ((ShipperListener) writer).beforeShipped();
             kvs.shipped();
@@ -343,6 +337,10 @@ public class FaultyMobStoreCompactor extends DefaultMobStoreCompactor {
     } catch (FileNotFoundException e) {
       LOG.error("MOB Stress Test FAILED, region: " + store.getRegionInfo().getEncodedName(), e);
       System.exit(-1);
+    } catch (RegionStoppedException e) {
+      LOG.warn("{}", e.getMessage());
+      progress.cancel();
+      return false;
     } catch (IOException t) {
       LOG.error("Mob compaction failed for region: " + store.getRegionInfo().getEncodedName());
       throw t;

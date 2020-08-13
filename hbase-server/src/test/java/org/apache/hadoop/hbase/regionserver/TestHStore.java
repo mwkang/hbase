@@ -474,7 +474,7 @@ public class TestHStore {
    * @throws IOException
    */
   @Test
-  public void testEmptyStoreFile() throws IOException {
+  public void testEmptyStoreFile() throws IOException, RegionStoppedException {
     init(this.name.getMethodName());
     // Write a store file.
     this.store.add(new KeyValue(row, family, qf1, 1, (byte[])null), null);
@@ -532,13 +532,13 @@ public class TestHStore {
   }
 
   @Test
-  public void testTimeRangeIfSomeCellsAreDroppedInFlush() throws IOException {
+  public void testTimeRangeIfSomeCellsAreDroppedInFlush() throws IOException, RegionStoppedException {
     testTimeRangeIfSomeCellsAreDroppedInFlush(1);
     testTimeRangeIfSomeCellsAreDroppedInFlush(3);
     testTimeRangeIfSomeCellsAreDroppedInFlush(5);
   }
 
-  private void testTimeRangeIfSomeCellsAreDroppedInFlush(int maxVersion) throws IOException {
+  private void testTimeRangeIfSomeCellsAreDroppedInFlush(int maxVersion) throws IOException, RegionStoppedException {
     init(this.name.getMethodName(), TEST_UTIL.getConfiguration(),
     ColumnFamilyDescriptorBuilder.newBuilder(family).setMaxVersions(maxVersion).build());
     long currentTs = 100;
@@ -567,7 +567,7 @@ public class TestHStore {
    * @throws IOException
    */
   @Test
-  public void testGet_FromFilesOnly() throws IOException {
+  public void testGet_FromFilesOnly() throws IOException, RegionStoppedException {
     init(this.name.getMethodName());
 
     //Put data in memstore
@@ -606,7 +606,7 @@ public class TestHStore {
    * @throws IOException
    */
   @Test
-  public void testGet_FromMemStoreAndFiles() throws IOException {
+  public void testGet_FromMemStoreAndFiles() throws IOException, RegionStoppedException {
     init(this.name.getMethodName());
 
     //Put data in memstore
@@ -636,7 +636,7 @@ public class TestHStore {
     assertCheck();
   }
 
-  private void flush(int storeFilessize) throws IOException{
+  private void flush(int storeFilessize) throws IOException, RegionStoppedException {
     this.store.snapshot();
     flushStore(store, id++);
     assertEquals(storeFilessize, this.store.getStorefiles().size());
@@ -783,7 +783,7 @@ public class TestHStore {
     }
   }
 
-  private static void flushStore(HStore store, long id) throws IOException {
+  private static void flushStore(HStore store, long id) throws IOException, RegionStoppedException {
     StoreFlushContext storeFlushCtx = store.createFlushContext(id, FlushLifeCycleTracker.DUMMY);
     storeFlushCtx.prepare();
     storeFlushCtx.flushCache(Mockito.mock(MonitoredTask.class));
@@ -815,7 +815,7 @@ public class TestHStore {
    * @throws IOException
    */
   @Test
-  public void testMultipleTimestamps() throws IOException {
+  public void testMultipleTimestamps() throws IOException, RegionStoppedException {
     int numRows = 1;
     long[] timestamps1 = new long[] {1,5,10,20};
     long[] timestamps2 = new long[] {30,80};
@@ -1019,7 +1019,7 @@ public class TestHStore {
   }
 
   @Test
-  public void testRefreshStoreFilesNotChanged() throws IOException {
+  public void testRefreshStoreFilesNotChanged() throws IOException, RegionStoppedException {
     init(name.getMethodName());
 
     assertEquals(0, this.store.getStorefilesCount());
@@ -1054,7 +1054,7 @@ public class TestHStore {
   }
 
   @Test
-  public void testNumberOfMemStoreScannersAfterFlush() throws IOException {
+  public void testNumberOfMemStoreScannersAfterFlush() throws IOException, RegionStoppedException {
     long seqId = 100;
     long timestamp = System.currentTimeMillis();
     Cell cell0 = CellBuilderFactory.create(CellBuilderType.DEEP_COPY).setRow(row).setFamily(family)
@@ -1079,7 +1079,7 @@ public class TestHStore {
   }
 
   private void testNumberOfMemStoreScannersAfterFlush(List<Cell> inputCellsBeforeSnapshot,
-      List<Cell> inputCellsAfterSnapshot) throws IOException {
+      List<Cell> inputCellsAfterSnapshot) throws IOException, RegionStoppedException {
     init(this.name.getMethodName() + "-" + inputCellsBeforeSnapshot.size());
     TreeSet<byte[]> quals = new TreeSet<>(Bytes.BYTES_COMPARATOR);
     long seqId = Long.MIN_VALUE;
@@ -1144,7 +1144,7 @@ public class TestHStore {
           try {
             flushStore(store, id++);
             timeToGoNextRow.set(true);
-          } catch (IOException e) {
+          } catch (IOException | RegionStoppedException e) {
             throw new RuntimeException(e);
           }
         }
@@ -1168,7 +1168,7 @@ public class TestHStore {
           try {
             flushStore(store, id++);
             timeToGoNextRow.set(true);
-          } catch (IOException e) {
+          } catch (IOException | RegionStoppedException e) {
             throw new RuntimeException(e);
           }
         }
@@ -1198,7 +1198,7 @@ public class TestHStore {
           try {
             flushStore(store, id++);
             timeToGetHint.set(true);
-          } catch (IOException e) {
+          } catch (IOException | RegionStoppedException e) {
             throw new RuntimeException(e);
           }
         }
@@ -1282,7 +1282,7 @@ public class TestHStore {
   }
 
   @Test
-  public void testCreateScannerAndSnapshotConcurrently() throws IOException, InterruptedException {
+  public void testCreateScannerAndSnapshotConcurrently() throws IOException, InterruptedException, RegionStoppedException {
     Configuration conf = HBaseConfiguration.create();
     conf.set(HStore.MEMSTORE_CLASS_NAME, MyCompactingMemStore.class.getName());
     init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family)
@@ -1337,7 +1337,7 @@ public class TestHStore {
   }
 
   @Test
-  public void testScanWithDoubleFlush() throws IOException {
+  public void testScanWithDoubleFlush() throws IOException, RegionStoppedException {
     Configuration conf = HBaseConfiguration.create();
     // Initialize region
     MyStore myStore = initMyStore(name.getMethodName(), conf, new MyStoreHook(){
@@ -1352,7 +1352,7 @@ public class TestHStore {
             // be clear.
             // -- phase (4/4)
             flushStore(store, tmpId);
-          }catch (IOException ex) {
+          } catch (IOException |RegionStoppedException ex) {
             throw new RuntimeException(ex);
           }
         });
@@ -1429,7 +1429,7 @@ public class TestHStore {
           case 1:
             try {
               flushStore(store, id++);
-            } catch (IOException e) {
+            } catch (IOException | RegionStoppedException e) {
               throw new RuntimeException(e);
             }
             break;
@@ -1470,7 +1470,7 @@ public class TestHStore {
    * @throws InterruptedException
    */
   @Test
-  public void testRunDoubleMemStoreCompactors() throws IOException, InterruptedException {
+  public void testRunDoubleMemStoreCompactors() throws IOException, InterruptedException, RegionStoppedException {
     int flushSize = 500;
     Configuration conf = HBaseConfiguration.create();
     conf.set(HStore.MEMSTORE_CLASS_NAME, MyCompactingMemStoreWithCustomCompactor.class.getName());

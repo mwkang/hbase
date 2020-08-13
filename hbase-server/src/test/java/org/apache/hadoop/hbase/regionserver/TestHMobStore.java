@@ -245,7 +245,7 @@ public class TestHMobStore {
    * @throws IOException
    */
   @Test
-  public void testGetFromFiles() throws IOException {
+  public void testGetFromFiles() throws IOException, RegionStoppedException {
     final Configuration conf = TEST_UTIL.getConfiguration();
     init(name.getMethodName(), conf, false);
 
@@ -289,7 +289,7 @@ public class TestHMobStore {
    * @throws IOException
    */
   @Test
-  public void testGetReferencesFromFiles() throws IOException {
+  public void testGetReferencesFromFiles() throws IOException, RegionStoppedException {
     final Configuration conf = HBaseConfiguration.create();
     init(name.getMethodName(), conf, false);
 
@@ -335,7 +335,7 @@ public class TestHMobStore {
    * @throws IOException
    */
   @Test
-  public void testGetFromMemStoreAndFiles() throws IOException {
+  public void testGetFromMemStoreAndFiles() throws IOException, RegionStoppedException {
 
     final Configuration conf = HBaseConfiguration.create();
 
@@ -379,7 +379,7 @@ public class TestHMobStore {
    * @throws IOException
    */
   @Test
-  public void testMobCellSizeThreshold() throws IOException {
+  public void testMobCellSizeThreshold() throws IOException, RegionStoppedException {
     final Configuration conf = HBaseConfiguration.create();
     ColumnFamilyDescriptor cfd =
         ColumnFamilyDescriptorBuilder.newBuilder(family).setMobEnabled(true).setMobThreshold(100)
@@ -462,7 +462,7 @@ public class TestHMobStore {
    * @param storeFilesSize
    * @throws IOException
    */
-  private void flush(int storeFilesSize) throws IOException{
+  private void flush(int storeFilesSize) throws IOException, RegionStoppedException {
     this.store.snapshot();
     flushStore(store, id++);
     Assert.assertEquals(storeFilesSize, this.store.getStorefiles().size());
@@ -475,7 +475,7 @@ public class TestHMobStore {
    * @param id
    * @throws IOException
    */
-  private static void flushStore(HMobStore store, long id) throws IOException {
+  private static void flushStore(HMobStore store, long id) throws IOException, RegionStoppedException {
     StoreFlushContext storeFlushCtx = store.createFlushContext(id, FlushLifeCycleTracker.DUMMY);
     storeFlushCtx.prepare();
     storeFlushCtx.flushCache(Mockito.mock(MonitoredTask.class));
