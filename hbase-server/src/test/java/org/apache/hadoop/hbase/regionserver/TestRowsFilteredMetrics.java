@@ -4,6 +4,7 @@ import java.io.IOException;
 
 import org.apache.hadoop.hbase.HBaseTestingUtil;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.ResultScanner;
@@ -25,11 +26,13 @@ public class TestRowsFilteredMetrics {
   private static byte[] FAMILY = Bytes.toBytes("testFamily");
 
   private static Table table;
+  private static Admin admin;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     TEST_UTIL.startMiniCluster(1);
     table = TEST_UTIL.createTable(TABLE_NAME, FAMILY);
+    admin = TEST_UTIL.getAdmin();
   }
 
   @AfterClass
@@ -44,6 +47,7 @@ public class TestRowsFilteredMetrics {
     put.addColumn(FAMILY, Bytes.toBytes("qual"), Bytes.toBytes("value"));
     table.put(put);
 
+    admin.flush(TABLE_NAME);
     // scan
     scan();
 
@@ -51,6 +55,8 @@ public class TestRowsFilteredMetrics {
     Delete delete = new Delete(Bytes.toBytes("row1"));
     table.delete(delete);
 
+    admin.flush(TABLE_NAME);
+    scan();
     scan();
   }
 
@@ -63,7 +69,8 @@ public class TestRowsFilteredMetrics {
     });
 
     final ScanMetrics metrics = resultScanner.getScanMetrics();
-    System.out.printf("countOfRowsScanned: %s, countOfRowsFiltered: %s\n",
-        metrics.countOfRowsScanned, metrics.countOfRowsFiltered);
+    System.out.printf(
+        "countOfRowsScanned: %s, countOfRowsFiltered: %s, countOfBlockBytesScanned: %s\n",
+        metrics.countOfRowsScanned, metrics.countOfRowsFiltered, metrics.countOfBlockBytesScanned);
   }
 }
