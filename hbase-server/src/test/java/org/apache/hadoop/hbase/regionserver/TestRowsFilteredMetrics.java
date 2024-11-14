@@ -5,11 +5,15 @@ import java.io.IOException;
 import org.apache.hadoop.hbase.HBaseTestingUtil;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.client.TableDescriptor;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -31,8 +35,16 @@ public class TestRowsFilteredMetrics {
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     TEST_UTIL.startMiniCluster(1);
-    table = TEST_UTIL.createTable(TABLE_NAME, FAMILY);
+
+    final ColumnFamilyDescriptor familyDescriptor =
+        ColumnFamilyDescriptorBuilder.newBuilder(FAMILY).setBlockCacheEnabled(false)
+            .setCacheDataOnWrite(false).build();
+    final TableDescriptor tableDescriptor =
+        TableDescriptorBuilder.newBuilder(TABLE_NAME).setColumnFamily(familyDescriptor).build();
     admin = TEST_UTIL.getAdmin();
+    admin.createTable(tableDescriptor);
+
+    table = admin.getConnection().getTable(TABLE_NAME);
   }
 
   @AfterClass
@@ -50,6 +62,7 @@ public class TestRowsFilteredMetrics {
     admin.flush(TABLE_NAME);
     // scan
     scan();
+    scan();
 
     // delete
     Delete delete = new Delete(Bytes.toBytes("row1"));
@@ -63,6 +76,7 @@ public class TestRowsFilteredMetrics {
   private static void scan() throws IOException {
     final Scan scan = new Scan();
     scan.setScanMetricsEnabled(true);
+    scan.setCacheBlocks(false);
     final ResultScanner resultScanner = table.getScanner(scan);
 
     resultScanner.forEach(result -> {
