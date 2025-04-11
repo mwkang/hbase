@@ -234,11 +234,6 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
     return !scan.isRaw() && scan.getTimeRange().getMax() == HConstants.LATEST_TIMESTAMP;
   }
 
-  public StoreScanner(HStore store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
-    long readPt) throws IOException {
-    this(store, scanInfo, scan, columns, readPt, null);
-  }
-
   /**
    * Opens a scanner across memstore, snapshot, and all StoreFiles. Assumes we are not in a
    * compaction.
@@ -247,6 +242,16 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
    * @param columns which columns we are scanning
    */
   public StoreScanner(HStore store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
+    long readPt) throws IOException {
+    this(store, scanInfo, scan, columns, readPt, null);
+  }
+
+  /**
+   * Constructor for initializing a StoreScanner with specific parameters. This constructor is used
+   * internally and provides additional flexibility for setting up the scanner with a custom
+   * StoreScannerHook.
+   */
+  StoreScanner(HStore store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
     long readPt, StoreScannerHook storeScannerHook) throws IOException {
     this(store, scan, scanInfo, columns != null ? columns.size() : 0, readPt, scan.getCacheBlocks(),
       ScanType.USER_SCAN, storeScannerHook);
@@ -758,7 +763,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
             }
             matcher.clearCurrentRow();
             seekOrSkipToNextRow(cell);
-            NextState stateAfterSeekNextRow = needToReturn(outResult);
+            NextState stateAfterSeekNextRow = needToReturn();
             if (stateAfterSeekNextRow != null) {
               return scannerContext.setScannerState(stateAfterSeekNextRow).hasMoreValues();
             }
@@ -766,7 +771,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
 
           case SEEK_NEXT_COL:
             seekOrSkipToNextColumn(cell);
-            NextState stateAfterSeekNextColumn = needToReturn(outResult);
+            NextState stateAfterSeekNextColumn = needToReturn();
             if (stateAfterSeekNextColumn != null) {
               return scannerContext.setScannerState(stateAfterSeekNextColumn).hasMoreValues();
             }
@@ -784,7 +789,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
                 ((!scan.isReversed() && difference > 0) || (scan.isReversed() && difference < 0))
               ) {
                 seekAsDirection(nextKV);
-                NextState stateAfterSeekByHint = needToReturn(outResult);
+                NextState stateAfterSeekByHint = needToReturn();
                 if (stateAfterSeekByHint != null) {
                   return scannerContext.setScannerState(stateAfterSeekByHint).hasMoreValues();
                 }
@@ -841,10 +846,9 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
    * memstore scanner is replaced by hfile scanner after #reopenAfterFlush. If the row of top cell
    * is changed, we should return the current cells. Otherwise, we may return the cells across
    * different rows.
-   * @param outResult the cells which are visible for user scan
    * @return null is the top cell doesn't change. Otherwise, the NextState to return
    */
-  private NextState needToReturn(List<? super ExtendedCell> outResult) {
+  private NextState needToReturn() {
     if (topChanged) {
       return heap.peek() == null ? NextState.NO_MORE_VALUES : NextState.MORE_VALUES;
     }
