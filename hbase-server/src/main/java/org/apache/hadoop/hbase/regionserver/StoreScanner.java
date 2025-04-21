@@ -41,12 +41,15 @@ import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.ipc.RpcCall;
 import org.apache.hadoop.hbase.ipc.RpcServer;
+import org.apache.hadoop.hbase.monitoring.MonitoredTask;
+import org.apache.hadoop.hbase.monitoring.TaskMonitor;
 import org.apache.hadoop.hbase.regionserver.ScannerContext.LimitScope;
 import org.apache.hadoop.hbase.regionserver.ScannerContext.NextState;
 import org.apache.hadoop.hbase.regionserver.handler.ParallelSeekHandler;
 import org.apache.hadoop.hbase.regionserver.querymatcher.CompactionScanQueryMatcher;
 import org.apache.hadoop.hbase.regionserver.querymatcher.ScanQueryMatcher;
 import org.apache.hadoop.hbase.regionserver.querymatcher.UserScanQueryMatcher;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -67,6 +70,9 @@ import org.apache.hbase.thirdparty.org.apache.commons.collections4.CollectionUti
 public class StoreScanner extends NonReversedNonLazyKeyValueScanner
   implements KeyValueScanner, InternalScanner, ChangedReadersObserver {
   private static final Logger LOG = LoggerFactory.getLogger(StoreScanner.class);
+
+  private int testFlushCount = 0;
+
   // In unit tests, the store could be null
   protected final HStore store;
   private final CellComparator comparator;
@@ -636,6 +642,32 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
           scannerContext.incrementBlockProgress(blockSize);
         });
 
+        final byte[] testTopChangeds = scan.getAttribute("TEST_TOP_CHANGED");
+        if (testTopChangeds != null) {
+          System.out.println("cell: " + CellUtil.toString(cell, false));
+          System.out.println("heap current: " + heap.getCurrentForTesting().getClass().getName());
+          System.out.println();
+
+          if (
+            "row1".equals(Bytes.toString(CellUtil.cloneRow(cell)))
+              && "cf2".equals(Bytes.toString(CellUtil.cloneFamily(cell)))
+          ) {
+
+            if (testFlushCount == 5) {
+              final StoreFlushContext flushContext = store.createFlushContext(
+                EnvironmentEdgeManager.currentTime(), FlushLifeCycleTracker.DUMMY);
+              flushContext.prepare();
+              final MonitoredTask monitoredTask =
+                TaskMonitor.get().createStatus("TopChanged test flush");
+              flushContext.flushCache(monitoredTask);
+              flushContext.commit(monitoredTask);
+              System.out.println("flush !!");
+            }
+
+            testFlushCount++;
+          }
+        }
+
         prevCell = cell;
         scannerContext.setLastPeekedCell(cell);
         topChanged = false;
@@ -745,7 +777,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
             }
             matcher.clearCurrentRow();
             seekOrSkipToNextRow(cell);
-            NextState stateAfterSeekNextRow = needToReturn();
+            NextState stateAfterSeekNextRow = needToReturn(outResult);
             if (stateAfterSeekNextRow != null) {
               return scannerContext.setScannerState(stateAfterSeekNextRow).hasMoreValues();
             }
@@ -753,7 +785,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
 
           case SEEK_NEXT_COL:
             seekOrSkipToNextColumn(cell);
-            NextState stateAfterSeekNextColumn = needToReturn();
+            NextState stateAfterSeekNextColumn = needToReturn(outResult);
             if (stateAfterSeekNextColumn != null) {
               return scannerContext.setScannerState(stateAfterSeekNextColumn).hasMoreValues();
             }
@@ -771,7 +803,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
                 ((!scan.isReversed() && difference > 0) || (scan.isReversed() && difference < 0))
               ) {
                 seekAsDirection(nextKV);
-                NextState stateAfterSeekByHint = needToReturn();
+                NextState stateAfterSeekByHint = needToReturn(outResult);
                 if (stateAfterSeekByHint != null) {
                   return scannerContext.setScannerState(stateAfterSeekByHint).hasMoreValues();
                 }
@@ -830,8 +862,8 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
    * different rows.
    * @return null is the top cell doesn't change. Otherwise, the NextState to return
    */
-  private NextState needToReturn() {
-    if (topChanged) {
+  private NextState needToReturn(List<? super ExtendedCell> outResult) {
+    if (!outResult.isEmpty() && topChanged) {
       return heap.peek() == null ? NextState.NO_MORE_VALUES : NextState.MORE_VALUES;
     }
     return null;
